@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Zeiss.Products.Api/Zeiss.Products.Api.csproj" />
+    <Project Path="src/Zeiss.Products.Application/Zeiss.Products.Application.csproj" />
+    <Project Path="src/Zeiss.Products.Domain/Zeiss.Products.Domain.csproj" />
+    <Project Path="src/Zeiss.Products.Infrastructure/Zeiss.Products.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Zeiss.Products.IntegrationTests/Zeiss.Products.IntegrationTests.csproj" />
+    <Project Path="tests/Zeiss.Products.UnitTests/Zeiss.Products.UnitTests.csproj" />
+  </Folder>
+</Solution>
