@@ -12,20 +12,25 @@ using Zeiss.Products.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers().ConfigureApiBehaviorOptions(options =>
-{
-    options.InvalidModelStateResponseFactory = context => new BadRequestObjectResult(new ErrorResponse
+builder.Services
+    // Required fields are checked by the validators, not by an implicit [Required] on the request.
+    .AddControllers(options => options.SuppressImplicitRequiredAttributeForNonNullableReferenceTypes = true)
+    // Hide JSON parser details such as .NET type names and byte positions from clients.
+    .AddJsonOptions(options => options.AllowInputFormatterExceptionMessages = false)
+    .ConfigureApiBehaviorOptions(options =>
     {
-        Message = "The request contains invalid values.",
-        Errors = context.ModelState
-            .Where(field => field.Value!.Errors.Count > 0)
-            .ToDictionary(field => field.Key, field => field.Value!.Errors
-                .Select(error => string.IsNullOrEmpty(error.ErrorMessage)
-                    ? "The supplied value is invalid."
-                    : error.ErrorMessage)
-                .ToArray())
+        options.InvalidModelStateResponseFactory = context => new BadRequestObjectResult(new ErrorResponse
+        {
+            Message = "The request contains invalid values.",
+            Errors = context.ModelState
+                .Where(field => field.Value!.Errors.Count > 0)
+                .ToDictionary(field => field.Key, field => field.Value!.Errors
+                    .Select(error => string.IsNullOrEmpty(error.ErrorMessage)
+                        ? "The supplied value is invalid."
+                        : error.ErrorMessage)
+                    .ToArray())
+        });
     });
-});
 builder.Services.AddSwaggerGen(options =>
 {
     options.DescribeAllParametersInCamelCase();

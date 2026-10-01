@@ -396,6 +396,24 @@ public class ProductsEndpointsTests : IAsyncLifetime
         Assert.Null(saved.Description);
     }
 
+    [Theory]
+    [InlineData("{\"name\":\"Lenses\",\"stock\":1.5}", "$.stock")]
+    [InlineData("{\"name\":123}", "$.name")]
+    [InlineData("{\"name\":", "$.name")]
+    public async Task Post_WithUnreadableJson_ReturnsGenericFieldErrorWithoutParserDetails(string json, string field)
+    {
+        using var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var response = await _client.PostAsync("/api/products", content);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var error = await response.Content.ReadFromJsonAsync<ErrorResponse>();
+        Assert.Equal("The request contains invalid values.", error!.Message);
+        var (key, messages) = Assert.Single(error.Errors);
+        Assert.Equal(field, key);
+        Assert.Equal(["The supplied value is invalid."], messages);
+    }
+
     [Fact]
     public async Task ListAndSearch_IncludeStockAndExcludeDeletedProducts()
     {
