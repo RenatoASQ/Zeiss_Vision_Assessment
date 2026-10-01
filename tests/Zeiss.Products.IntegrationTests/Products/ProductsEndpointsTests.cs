@@ -18,18 +18,9 @@ namespace Zeiss.Products.IntegrationTests.Products;
 
 public class ProductsEndpointsTests : IAsyncLifetime
 {
-    private readonly string _connectionString;
-    private readonly DbContextOptions<ProductsDbContext> _options;
+    private readonly TestDatabase _database = new();
     private WebApplicationFactory<Program> _factory = null!;
     private HttpClient _client = null!;
-
-    public ProductsEndpointsTests()
-    {
-        var databaseName = $"ZeissProductsTests_{Guid.NewGuid():N}";
-        _connectionString = $"Server=(localdb)\\MSSQLLocalDB;Database={databaseName};Trusted_Connection=True;TrustServerCertificate=True";
-        _options = new DbContextOptionsBuilder<ProductsDbContext>()
-            .UseSqlServer(_connectionString).Options;
-    }
 
     public async Task InitializeAsync()
     {
@@ -37,15 +28,14 @@ public class ProductsEndpointsTests : IAsyncLifetime
         await context.Database.MigrateAsync();
 
         _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
-            builder.UseSetting("ConnectionStrings:Products", _connectionString));
+            builder.UseSetting("ConnectionStrings:Products", _database.ConnectionString));
 
         // Check isolation before sending any requests: never write to the development database.
         using var scope = _factory.Services.CreateScope();
-        var expectedConnection = new SqlConnectionStringBuilder(_connectionString);
         var actualConnection = new SqlConnectionStringBuilder(
             scope.ServiceProvider.GetRequiredService<ProductsDbContext>().Database.GetConnectionString());
-        Assert.Equal(expectedConnection.DataSource, actualConnection.DataSource);
-        Assert.Equal(expectedConnection.InitialCatalog, actualConnection.InitialCatalog);
+        Assert.Equal(_database.DataSource, actualConnection.DataSource);
+        Assert.Equal(_database.Name, actualConnection.InitialCatalog);
 
         _client = _factory.CreateClient(new WebApplicationFactoryClientOptions
         {
@@ -62,8 +52,7 @@ public class ProductsEndpointsTests : IAsyncLifetime
             await _factory.DisposeAsync();
         }
 
-        await using var context = CreateContext();
-        await context.Database.EnsureDeletedAsync();
+        await _database.DropAsync();
     }
 
     [Fact]
@@ -350,6 +339,64 @@ public class ProductsEndpointsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Description_IsTrimmedReturnedAndClearedByPut()
+    {
+        var response = await _client.PostAsJsonAsync("/api/products",
+            new { name = "Lenses", description = "  Daily contact lenses  ", stock = 5 });
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<ProductResponse>();
+        Assert.Equal("Daily contact lenses", created!.Description);
+        var fetched = await _client.GetFromJsonAsync<ProductResponse>($"/api/products/{created.Id}");
+        Assert.Equal("Daily contact lenses", fetched!.Description);
+        var listed = await _client.GetFromJsonAsync<List<ProductResponse>>("/api/products");
+        Assert.Equal("Daily contact lenses", Assert.Single(listed!).Description);
+
+        var maximum = new string('a', 1000);
+        var replaced = await _client.PutAsJsonAsync($"/api/products/{created.Id}",
+            new { name = "Lenses", description = $" {maximum} ", stock = 5 });
+        Assert.Equal(HttpStatusCode.OK, replaced.StatusCode);
+        Assert.Equal(maximum, (await replaced.Content.ReadFromJsonAsync<ProductResponse>())!.Description);
+
+        var blank = await _client.PutAsJsonAsync($"/api/products/{created.Id}",
+            new { name = "Lenses", description = "   ", stock = 5 });
+        Assert.Equal(HttpStatusCode.OK, blank.StatusCode);
+        Assert.Null((await blank.Content.ReadFromJsonAsync<ProductResponse>())!.Description);
+
+        var restored = await _client.PutAsJsonAsync($"/api/products/{created.Id}",
+            new { name = "Lenses", description = "Restored", stock = 5 });
+        Assert.Equal("Restored", (await restored.Content.ReadFromJsonAsync<ProductResponse>())!.Description);
+        var omitted = await _client.PutAsJsonAsync($"/api/products/{created.Id}", new { name = "Lenses", stock = 5 });
+        Assert.Equal(HttpStatusCode.OK, omitted.StatusCode);
+        Assert.Null((await omitted.Content.ReadFromJsonAsync<ProductResponse>())!.Description);
+
+        await using var verification = CreateContext();
+        Assert.Null((await verification.Products.SingleAsync()).Description);
+        Assert.Equal(1, await verification.StockMovements.CountAsync());
+    }
+
+    [Theory]
+    [InlineData("POST")]
+    [InlineData("PUT")]
+    public async Task Description_LongerThanTheLimit_ReturnsValidationErrorWithoutSaving(string method)
+    {
+        var product = await CreateProductAsync("Lenses", 5);
+        var request = new { name = "Changed", description = new string('a', 1001), stock = 1 };
+
+        var response = method == "POST"
+            ? await _client.PostAsJsonAsync("/api/products", request)
+            : await _client.PutAsJsonAsync($"/api/products/{product.Id}", request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var error = await response.Content.ReadFromJsonAsync<ErrorResponse>();
+        Assert.Equal("The request contains invalid values.", error!.Message);
+        Assert.Equal(["Description must not exceed 1000 characters."], error.Errors["Description"]);
+        await using var verification = CreateContext();
+        var saved = await verification.Products.SingleAsync();
+        Assert.Equal("Lenses", saved.Name);
+        Assert.Null(saved.Description);
+    }
+
+    [Fact]
     public async Task ListAndSearch_IncludeStockAndExcludeDeletedProducts()
     {
         var lenses = await CreateProductAsync("Ótica lenses", 20);
@@ -428,7 +475,7 @@ public class ProductsEndpointsTests : IAsyncLifetime
         var product = await CreateProductAsync("Original name", 10);
         // Force another SQL Server context to commit between this request's read and save.
         await using var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
-            services.AddDbContext<ProductsDbContext>(options => options.AddInterceptors(new ConcurrentRenameInterceptor(_options)))));
+            services.AddDbContext<ProductsDbContext>(options => options.AddInterceptors(new ConcurrentRenameInterceptor(_database.Options)))));
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri("https://localhost") });
 
         var response = operation switch
@@ -458,7 +505,7 @@ public class ProductsEndpointsTests : IAsyncLifetime
         return (await response.Content.ReadFromJsonAsync<ProductResponse>())!;
     }
 
-    private ProductsDbContext CreateContext() => new(_options);
+    private ProductsDbContext CreateContext() => _database.CreateContext();
 
     // Test-only hook: creates an actual RowVersion conflict without timing-dependent delays.
     private class ConcurrentRenameInterceptor : SaveChangesInterceptor

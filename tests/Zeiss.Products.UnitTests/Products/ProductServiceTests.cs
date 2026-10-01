@@ -47,6 +47,41 @@ public class ProductServiceTests
         Assert.Empty(repository.SavedProduct.StockMovements);
     }
 
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("", null)]
+    [InlineData(" \t ", null)]
+    [InlineData("  Daily lenses  ", "Daily lenses")]
+    public async Task CreateAsync_NormalizesTheDescription(string? description, string? expected)
+    {
+        var repository = new FakeProductRepository();
+        var service = new ProductService(repository);
+
+        var product = await service.CreateAsync(
+            new CreateProductRequest { Name = "Contact lenses", Description = description }, CancellationToken.None);
+
+        Assert.Equal(expected, product.Description);
+        Assert.Equal(expected, repository.SavedProduct!.Description);
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("   ", null)]
+    [InlineData("  New description  ", "New description")]
+    public async Task UpdateAsync_ReplacesOrClearsTheDescription(string? description, string? expected)
+    {
+        var product = new Product { Id = 100000, Name = "Lenses", Description = "Old description", Stock = 20 };
+        var repository = new FakeProductRepository { ExistingProduct = product };
+
+        var updated = await new ProductService(repository).UpdateAsync(product.Id,
+            new UpdateProductRequest { Name = "Lenses", Description = description, Stock = 20 }, CancellationToken.None);
+
+        Assert.NotNull(updated);
+        Assert.Equal(expected, updated.Description);
+        Assert.Equal(expected, product.Description);
+        Assert.Equal(1, repository.SaveCalls);
+    }
+
     [Fact]
     public async Task CreateAsync_WithExistingName_DoesNotAttemptToSave()
     {

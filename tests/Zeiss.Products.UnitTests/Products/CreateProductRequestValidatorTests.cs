@@ -54,6 +54,39 @@ public class CreateProductRequestValidatorTests
     }
 
     [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Validate_WhenDescriptionIsMissingOrBlank_IsValid(string? description)
+    {
+        var request = new CreateProductRequest { Name = "Contact lenses", Description = description };
+
+        var result = _validator.Validate(request);
+
+        Assert.True(result.IsValid);
+    }
+
+    [Theory]
+    [InlineData(1000, true)]
+    [InlineData(1001, false)]
+    public void Validate_AppliesTheDescriptionLengthLimitAfterTrimming(int length, bool expected)
+    {
+        var request = new CreateProductRequest
+        {
+            Name = "Contact lenses",
+            Description = $"  {new string('a', length)}  "
+        };
+
+        var result = _validator.Validate(request);
+
+        Assert.Equal(expected, result.IsValid);
+        if (!expected)
+        {
+            Assert.Equal(nameof(CreateProductRequest.Description), Assert.Single(result.Errors).PropertyName);
+        }
+    }
+
+    [Theory]
     [InlineData(0)]
     [InlineData(20)]
     [InlineData(int.MaxValue)]

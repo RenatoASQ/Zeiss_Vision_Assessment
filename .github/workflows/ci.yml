@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore Zeiss.Products.slnx
+
+      - name: Build
+        run: dotnet build Zeiss.Products.slnx --configuration Release --no-restore
+
+      - name: Unit tests
+        run: dotnet test tests/Zeiss.Products.UnitTests --configuration Release --no-build
+
+      # A throwaway password for this run only; it is masked in the logs.
+      - name: Generate SQL Server password
+        run: |
+          password="Ci1-$(openssl rand -hex 16)"
+          echo "::add-mask::$password"
+          echo "MSSQL_SA_PASSWORD=$password" >> "$GITHUB_ENV"
+
+      # Uses the same compose.yaml as local development; --wait blocks until the healthcheck passes.
+      - name: Start SQL Server
+        run: docker compose up --detach --wait --wait-timeout 180
+
+      - name: Integration tests
+        run: |
+          export ZEISS_PRODUCTS_TEST_SQLSERVER="Server=localhost,1433;User ID=sa;Password=$MSSQL_SA_PASSWORD;TrustServerCertificate=True"
+          dotnet test tests/Zeiss.Products.IntegrationTests --configuration Release --no-build
+
+      - name: SQL Server logs
+        if: failure()
+        run: docker compose logs sqlserver

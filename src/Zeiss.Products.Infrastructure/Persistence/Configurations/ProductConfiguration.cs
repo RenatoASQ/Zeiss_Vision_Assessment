@@ -27,6 +27,9 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
             .HasMaxLength(ProductRules.MaxNameLength)
             .UseCollation("Latin1_General_100_CI_AI");
 
+        builder.Property(product => product.Description)
+            .HasMaxLength(ProductRules.MaxDescriptionLength);
+
         // Names can be reused after a product is deleted.
         builder.HasIndex(product => product.Name)
             .IsUnique()

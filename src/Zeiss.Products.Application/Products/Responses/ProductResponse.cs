@@ -6,6 +6,8 @@ public record ProductResponse
 
     public string Name { get; init; } = string.Empty;
 
+    public string? Description { get; init; }
+
     public int Stock { get; init; }
 
     public DateTime CreatedAtUtc { get; init; }

@@ -1,5 +1,6 @@
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
+using Zeiss.Products.Api.Errors;
 using Zeiss.Products.Api.Responses;
 using Zeiss.Products.Application.Products.Requests.ChangeStock;
 using Zeiss.Products.Application.Products.Requests.CreateProduct;
@@ -35,6 +36,7 @@ builder.Services.AddScoped<IValidator<ChangeStockRequest>, ChangeStockRequestVal
 builder.Services.AddScoped<IValidator<SearchProductsRequest>, SearchProductsRequestValidator>();
 builder.Services.AddScoped<IValidator<StockLevelRequest>, StockLevelRequestValidator>();
 builder.Services.AddScoped<IProductService, ProductService>();
+builder.Services.AddExceptionHandler<DomainExceptionHandler>();
 
 var connectionString = builder.Configuration.GetConnectionString("Products")
     ?? throw new InvalidOperationException("Connection string 'Products' is required.");
@@ -42,6 +44,8 @@ builder.Services.AddInfrastructure(connectionString);
 
 var app = builder.Build();
 
+// DomainExceptionHandler handles business errors first. Anything else is logged by the
+// middleware and returns a generic message without technical details.
 app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
 {
     context.Response.StatusCode = StatusCodes.Status500InternalServerError;

@@ -30,6 +30,7 @@ public class ProductService : IProductService
         var product = new Product
         {
             Name = name,
+            Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
             Stock = request.Stock,
             CreatedAtUtc = DateTime.UtcNow
         };
@@ -89,6 +90,7 @@ public class ProductService : IProductService
         }
 
         product.Name = name;
+        product.Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
         var stockBefore = product.Stock;
         product.Stock = request.Stock!.Value;
 
@@ -170,6 +172,7 @@ public class ProductService : IProductService
     {
         Id = product.Id,
         Name = product.Name,
+        Description = product.Description,
         Stock = product.Stock,
         CreatedAtUtc = product.CreatedAtUtc
     };

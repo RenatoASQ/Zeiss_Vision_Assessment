@@ -40,6 +40,10 @@ namespace Zeiss.Products.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("DeletedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)

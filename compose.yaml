@@ -1,0 +1,22 @@
+# SQL Server for local development and integration tests. The API runs on the host.
+# Set MSSQL_SA_PASSWORD (environment variable or a git-ignored .env file) before starting.
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2025-CU9-ubuntu-24.04
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD before starting SQL Server}
+    ports:
+      - "127.0.0.1:${MSSQL_PORT:-1433}:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -b -Q \"SELECT 1\" -o /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  sqlserver-data:

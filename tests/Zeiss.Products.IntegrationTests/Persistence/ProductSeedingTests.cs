@@ -9,27 +9,20 @@ namespace Zeiss.Products.IntegrationTests.Persistence;
 
 public class ProductSeedingTests : IAsyncLifetime
 {
-    private readonly string _connectionString;
+    private readonly TestDatabase _database = new();
     private readonly ServiceProvider _services;
 
     public ProductSeedingTests()
     {
-        var databaseName = $"ZeissProductsTests_{Guid.NewGuid():N}";
-        _connectionString = $"Server=(localdb)\\MSSQLLocalDB;Database={databaseName};Trusted_Connection=True;TrustServerCertificate=True";
-        _services = new ServiceCollection().AddInfrastructure(_connectionString).BuildServiceProvider();
+        _services = new ServiceCollection().AddInfrastructure(_database.ConnectionString).BuildServiceProvider();
     }
 
     public Task InitializeAsync() => Task.CompletedTask;
 
     public async Task DisposeAsync()
     {
-        await using (var scope = _services.CreateAsyncScope())
-        {
-            var context = scope.ServiceProvider.GetRequiredService<ProductsDbContext>();
-            await context.Database.EnsureDeletedAsync();
-        }
-
         await _services.DisposeAsync();
+        await _database.DropAsync();
     }
 
     [Theory]
@@ -112,8 +105,7 @@ public class ProductSeedingTests : IAsyncLifetime
     public async Task Migrate_WithExistingCatalog_LeavesItUnchanged()
     {
         // Prepare a database that already has user data, without running the seeding callbacks.
-        var options = new DbContextOptionsBuilder<ProductsDbContext>().UseSqlServer(_connectionString).Options;
-        await using (var setup = new ProductsDbContext(options))
+        await using (var setup = _database.CreateContext())
         {
             await setup.Database.MigrateAsync();
             setup.Products.Add(new Product { Name = "Existing product", CreatedAtUtc = DateTime.UtcNow });
@@ -131,8 +123,7 @@ public class ProductSeedingTests : IAsyncLifetime
     [Fact]
     public async Task Migrate_FromConcurrentContexts_DoesNotDuplicateSeedData()
     {
-        var options = new DbContextOptionsBuilder<ProductsDbContext>().UseSqlServer(_connectionString).Options;
-        await using (var setup = new ProductsDbContext(options))
+        await using (var setup = _database.CreateContext())
         {
             await setup.Database.MigrateAsync();
         }

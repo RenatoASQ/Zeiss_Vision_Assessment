@@ -39,6 +39,30 @@ public class ProductRequestValidatorTests
     }
 
     [Theory]
+    [InlineData(null)]
+    [InlineData("   ")]
+    [InlineData(" Daily lenses ")]
+    public void Update_AcceptsAnOptionalDescription(string? description)
+    {
+        var request = new UpdateProductRequest { Name = "Lenses", Description = description, Stock = 0 };
+        Assert.True(new UpdateProductRequestValidator().Validate(request).IsValid);
+    }
+
+    [Theory]
+    [InlineData(1000, true)]
+    [InlineData(1001, false)]
+    public void Update_AppliesTheDescriptionLengthLimitAfterTrimming(int length, bool expected)
+    {
+        var request = new UpdateProductRequest
+        {
+            Name = "Lenses",
+            Description = $"  {new string('a', length)}  ",
+            Stock = 0
+        };
+        Assert.Equal(expected, new UpdateProductRequestValidator().Validate(request).IsValid);
+    }
+
+    [Theory]
     [InlineData(null, false)]
     [InlineData(-1, false)]
     [InlineData(0, true)]

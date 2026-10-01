@@ -10,16 +10,8 @@ namespace Zeiss.Products.IntegrationTests.Persistence;
 
 public class ProductsDbContextTests : IAsyncLifetime
 {
-    private readonly DbContextOptions<ProductsDbContext> _options;
-
-    public ProductsDbContextTests()
-    {
-        // Every test owns a new database, including its sequence, and deletes it afterwards.
-        var databaseName = $"ZeissProductsTests_{Guid.NewGuid():N}";
-        _options = new DbContextOptionsBuilder<ProductsDbContext>()
-            .UseSqlServer($"Server=(localdb)\\MSSQLLocalDB;Database={databaseName};Trusted_Connection=True;TrustServerCertificate=True")
-            .Options;
-    }
+    // Every test owns a new database, including its sequence, and deletes it afterwards.
+    private readonly TestDatabase _database = new();
 
     public async Task InitializeAsync()
     {
@@ -27,11 +19,7 @@ public class ProductsDbContextTests : IAsyncLifetime
         await context.Database.MigrateAsync();
     }
 
-    public async Task DisposeAsync()
-    {
-        await using var context = CreateContext();
-        await context.Database.EnsureDeletedAsync();
-    }
+    public Task DisposeAsync() => _database.DropAsync();
 
     [Fact]
     public async Task SaveChanges_WithProductAndMovement_GeneratesIdsAndPersistsTheRelationship()
@@ -335,7 +323,7 @@ public class ProductsDbContextTests : IAsyncLifetime
         Assert.Equal(1, await verification.Products.CountAsync());
     }
 
-    private ProductsDbContext CreateContext() => new(_options);
+    private ProductsDbContext CreateContext() => _database.CreateContext();
 
     private static Product NewProduct(string name) => new()
     {

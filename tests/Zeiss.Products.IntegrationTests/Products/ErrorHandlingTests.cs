@@ -20,23 +20,26 @@ public class ErrorHandlingTests
     [InlineData("Production", "POST")]
     public async Task Products_WhenDatabaseIsMissing_ReturnGenericJsonError(string environment, string method)
     {
-        // Intentionally leave this unique database uncreated to reproduce SQL Server error 4060.
-        var databaseName = $"ZeissProductsMissing_{Guid.NewGuid():N}";
-        var connectionString = $"Server=(localdb)\\MSSQLLocalDB;Database={databaseName};Trusted_Connection=True;TrustServerCertificate=True";
+        // Intentionally leave this unique database uncreated, so opening a connection fails.
+        // Checked through master: LocalDB can report error 233 instead of 4060 for the failed login.
+        var database = new TestDatabase();
 
-        await using var connection = new SqlConnection(connectionString);
-        var sqlException = await Assert.ThrowsAsync<SqlException>(() => connection.OpenAsync());
-        Assert.Equal(4060, sqlException.Number);
+        var master = new SqlConnectionStringBuilder(database.ConnectionString) { InitialCatalog = "master" };
+        await using var connection = new SqlConnection(master.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new SqlCommand("SELECT DB_ID(@name)", connection);
+        command.Parameters.AddWithValue("@name", database.Name);
+        Assert.IsType<DBNull>(await command.ExecuteScalarAsync());
 
         await using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
-            builder.UseEnvironment(environment).UseSetting("ConnectionStrings:Products", connectionString));
+            builder.UseEnvironment(environment).UseSetting("ConnectionStrings:Products", database.ConnectionString));
 
         // Verify isolation before making requests, especially the POST.
         using var scope = factory.Services.CreateScope();
         var actualConnection = new SqlConnectionStringBuilder(
             scope.ServiceProvider.GetRequiredService<ProductsDbContext>().Database.GetConnectionString());
-        Assert.Equal("(localdb)\\MSSQLLocalDB", actualConnection.DataSource);
-        Assert.Equal(databaseName, actualConnection.InitialCatalog);
+        Assert.Equal(database.DataSource, actualConnection.DataSource);
+        Assert.Equal(database.Name, actualConnection.InitialCatalog);
 
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {

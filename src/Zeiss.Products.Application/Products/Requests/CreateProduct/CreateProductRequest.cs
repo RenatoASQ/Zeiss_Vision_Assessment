@@ -7,6 +7,9 @@ public record CreateProductRequest
 {
     public string Name { get; init; } = string.Empty;
 
+    // Optional. Blank values are stored as null.
+    public string? Description { get; init; }
+
     public int Stock { get; init; }
 }
 
@@ -20,6 +23,10 @@ public class CreateProductRequestValidator : AbstractValidator<CreateProductRequ
             .WithMessage("Name is required.")
             .Must(name => name.Trim().Length <= ProductRules.MaxNameLength)
             .WithMessage($"Name must not exceed {ProductRules.MaxNameLength} characters.");
+
+        RuleFor(request => request.Description)
+            .Must(description => description is null || description.Trim().Length <= ProductRules.MaxDescriptionLength)
+            .WithMessage($"Description must not exceed {ProductRules.MaxDescriptionLength} characters.");
 
         RuleFor(request => request.Stock)
             .GreaterThanOrEqualTo(0)
